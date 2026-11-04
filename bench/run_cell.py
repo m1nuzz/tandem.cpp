@@ -80,7 +80,11 @@ def main():
                             "--out", f"{a.out}/{a.tag}.w4.json"], check=True)
             out["w4"] = json.load(open(f"{a.out}/{a.tag}.w4.json"))["summary"]
     finally:
-        srv.send_signal(signal.SIGINT)
+        if os.name == "nt":
+            # Windows: subprocess.send_signal(SIGINT) raises ValueError
+            srv.terminate()
+        else:
+            srv.send_signal(signal.SIGINT)
         try:
             srv.wait(60)
         except subprocess.TimeoutExpired:

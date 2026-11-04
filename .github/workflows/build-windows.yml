@@ -1,9 +1,15 @@
 # Builds tandem.cpp (patched llama.cpp) llama-server for Windows with CUDA.
-# Trigger manually from the Actions tab: Run workflow.
+# Trigger manually from the Actions tab: Run workflow, or push a tag like v1.0.0
+# to build and publish a GitHub release automatically.
 name: Build llama-server (Windows CUDA)
 
 on:
   workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
 
 jobs:
   build-windows-cuda:
@@ -23,13 +29,14 @@ jobs:
       # Jimver/cuda-toolkit's version list does not include the newest CUDA
       # releases, and the runner's VS 2026 (cl 19.5x) is rejected by CUDA 13.1.
       # Install CUDA 13.3 directly from NVIDIA's CDN (newest Windows network
-      # installer publicly available there).
+      # installer publicly available there). curl with retries instead of
+      # Invoke-WebRequest, which can hang forever on a stalled connection.
       - name: Install CUDA 13.3
         shell: pwsh
         run: |
-          $ProgressPreference = 'SilentlyContinue'
           $url = "https://developer.download.nvidia.com/compute/cuda/13.3.0/network_installers/cuda_13.3.0_windows_network.exe"
-          Invoke-WebRequest -Uri $url -OutFile cuda_setup.exe
+          curl.exe -L --retry 3 --retry-delay 5 --connect-timeout 30 -o cuda_setup.exe $url
+          if (-not (Test-Path .\cuda_setup.exe) -or (Get-Item .\cuda_setup.exe).Length -lt 1MB) { throw "CUDA installer download failed" }
           $p = Start-Process -FilePath .\cuda_setup.exe -ArgumentList '-s' -Wait -PassThru
           Write-Host "Installer exit code: $($p.ExitCode)"
           $cudaRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3"
@@ -68,3 +75,37 @@ jobs:
             tandem/build/bin/*.dll
           retention-days: 7
           if-no-files-found: error
+
+  # On a v* tag push: attach the built binaries to a GitHub release.
+  # If the release (and its tag) already exists, it is left untouched.
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-windows-cuda
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: llama-server-windows-cuda
+          path: dist
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          ZIP="llama-server-windows-cuda-${VERSION}.zip"
+          python3 - "$ZIP" <<'PY'
+          import zipfile, os, sys
+          with zipfile.ZipFile(sys.argv[1], 'w', zipfile.ZIP_DEFLATED) as z:
+              for f in sorted(os.listdir('dist')):
+                  if os.path.isfile(os.path.join('dist', f)):
+                      z.write(os.path.join('dist', f), f)
+          PY
+          if gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $VERSION already exists, skipping upload"
+          else
+            gh release create "$VERSION" "$ZIP" --repo "$GITHUB_REPOSITORY" \
+              --title "tandem.cpp llama-server (Windows CUDA) $VERSION" \
+              --notes "Windows x64 build of llama-server with tandem.cpp MoE expert-cache patches, CUDA sm_120 (RTX 50xx). Built from $GITHUB_SHA with CUDA 13.3 / VS 2026. See the README for recommended launch flags."
+          fi

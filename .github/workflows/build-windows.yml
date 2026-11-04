@@ -1,0 +1,68 @@
+# Builds tandem.cpp (patched llama.cpp) llama-server for Windows with CUDA.
+# Trigger manually from the Actions tab: Run workflow.
+name: Build llama-server (Windows CUDA)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows-cuda:
+    runs-on: windows-latest
+    timeout-minutes: 240
+    steps:
+      # Global git config must be set BEFORE checkout so files are checked out
+      # with LF endings (git apply of tandem.patch inside build.sh needs LF).
+      - name: Force LF line endings
+        shell: bash
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - uses: actions/checkout@v4
+
+      # sm_120 (RTX 50xx) needs CUDA >= 12.8. Use the preinstalled toolkit when
+      # it is new enough, otherwise install 13.1.
+      - name: Check CUDA toolkit
+        id: cuda
+        shell: pwsh
+        run: |
+          $ok = $false
+          $candidates = @("$env:CUDA_PATH\bin\nvcc.exe")
+          $onPath = (Get-Command nvcc -ErrorAction SilentlyContinue).Source
+          if ($onPath) { $candidates += $onPath }
+          foreach ($c in $candidates) {
+            if ($c -and (Test-Path $c)) {
+              $m = (& $c --version 2>&1 | Select-String 'release (\d+\.\d+)').Matches
+              if ($m) {
+                Write-Host "Found nvcc $c -> release $($m[0].Groups[1].Value)"
+                if ([version]$m[0].Groups[1].Value -ge [version]'12.8') { $ok = $true; break }
+              }
+            }
+          }
+          "ok=$ok" >> $env:GITHUB_OUTPUT
+
+      - name: Install CUDA 13.1
+        if: steps.cuda.outputs.ok != 'true'
+        uses: Jimver/cuda-toolkit@master
+        with:
+          cuda: '13.1.0'
+          method: 'network'
+
+      - name: Build llama-server
+        shell: bash
+        run: bash build.sh tandem -DCMAKE_CUDA_ARCHITECTURES=120
+
+      # Print the tandem/MTP related flags so the run log shows what this build supports.
+      - name: Verify tandem flags
+        shell: bash
+        run: ./tandem/build/bin/llama-server.exe --help 2>&1 | grep -iE -- "moe-cache-mib|cpu-moe|cmoe|draft-mtp|spec-type" || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: llama-server-windows-cuda
+          path: |
+            tandem/build/bin/llama-server.exe
+            tandem/build/bin/*.dll
+          retention-days: 7
+          if-no-files-found: error

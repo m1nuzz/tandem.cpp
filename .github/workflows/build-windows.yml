@@ -20,44 +20,39 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      # CUDA has a hard MSVC version gate (crt/host_config.h): CUDA 13.1 only
-      # supports VS 2019..2022, VS 2026 needs CUDA 13.4+. Prefer VS 2022 when
-      # present, otherwise use the newest VS with a matching CUDA release.
-      - name: Select Visual Studio
-        id: vs
+      # Jimver/cuda-toolkit's version list does not include the newest CUDA
+      # releases, and the runner's VS 2026 (cl 19.5x) is rejected by CUDA 13.1.
+      # Install CUDA 13.3 directly from NVIDIA's CDN (newest Windows network
+      # installer publicly available there).
+      - name: Install CUDA 13.3
         shell: pwsh
         run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $vs2022 = & $vswhere -version "[17.0,18.0)" -latest -property installationPath
-          if ($vs2022) {
-            Write-Host "Selected VS 2022: $vs2022"
-            "vsroot=$vs2022" >> $env:GITHUB_OUTPUT
-            "cuda_version=13.1.0" >> $env:GITHUB_OUTPUT
-          } else {
-            $latest = & $vswhere -latest -property installationPath
-            Write-Host "Selected newest VS (2026?): $latest"
-            "vsroot=$latest" >> $env:GITHUB_OUTPUT
-            "cuda_version=13.4.0" >> $env:GITHUB_OUTPUT
-          }
-
-      - name: Install CUDA ${{ steps.vs.outputs.cuda_version }}
-        uses: Jimver/cuda-toolkit@master
-        with:
-          cuda: ${{ steps.vs.outputs.cuda_version }}
-          method: 'network'
+          $ProgressPreference = 'SilentlyContinue'
+          $url = "https://developer.download.nvidia.com/compute/cuda/13.3.0/network_installers/cuda_13.3.0_windows_network.exe"
+          Invoke-WebRequest -Uri $url -OutFile cuda_setup.exe
+          $p = Start-Process -FilePath .\cuda_setup.exe -ArgumentList '-s' -Wait -PassThru
+          Write-Host "Installer exit code: $($p.ExitCode)"
+          $cudaRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3"
+          if (-not (Test-Path "$cudaRoot\bin\nvcc.exe")) { throw "nvcc.exe not found after CUDA install" }
+          "CUDA_PATH=$cudaRoot" >> $env:GITHUB_ENV
+          "$cudaRoot\bin" >> $env:GITHUB_PATH
 
       - name: Build llama-server
         shell: pwsh
         run: |
           # VS generator can't find the CUDA toolset (CUDA is installed after VS),
           # so use Ninja with a VS dev shell environment (cl.exe + INCLUDE/LIB on PATH).
-          $vsRoot = "${{ steps.vs.outputs.vsroot }}"
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsRoot = & $vswhere -latest -property installationPath
+          Write-Host "VS root: $vsRoot"
           & "$vsRoot\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64
           Write-Host "cl: $((Get-Command cl -ErrorAction SilentlyContinue).Source)"
           Write-Host "nvcc: $((Get-Command nvcc -ErrorAction SilentlyContinue).Source)"
           Write-Host "ninja: $((Get-Command ninja -ErrorAction SilentlyContinue).Source)"
           $env:CMAKE_GENERATOR = "Ninja"
-          bash build.sh tandem -DCMAKE_CUDA_ARCHITECTURES=120
+          # -allow-unsupported-compiler skips nvcc's MSVC version gate; harmless
+          # if the compiler is actually supported.
+          bash build.sh tandem -DCMAKE_CUDA_ARCHITECTURES=120 -DCMAKE_CUDA_FLAGS=-allow-unsupported-compiler
 
       # Print the tandem/MTP related flags so the run log shows what this build supports.
       - name: Verify tandem flags

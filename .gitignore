@@ -1,0 +1,6 @@
+# Local artifacts
+bin/
+dist/
+build/
+tandem/
+*.log

@@ -1029,7 +1029,7 @@ diff --git a/ggml/src/ggml-cpu/ggml-cpu.c b/ggml/src/ggml-cpu/ggml-cpu.c
 index 53d39d2..bb13f88 100644
 --- a/ggml/src/ggml-cpu/ggml-cpu.c
 +++ b/ggml/src/ggml-cpu/ggml-cpu.c
-@@ -1742,6 +1742,34 @@ static void ggml_compute_forward_mul_mat_id(
+@@ -1742,6 +1742,38 @@ static void ggml_compute_forward_mul_mat_id(
  
  /////////////////////////////////
  
@@ -1049,7 +1049,11 @@ index 53d39d2..bb13f88 100644
 +            break;
 +        }
 +    }
++#if defined(_MSC_VER)
++    _ReadBarrier();
++#else
 +    __atomic_thread_fence(__ATOMIC_ACQUIRE);
++#endif
 +    flag[1] = v;
 +    flag[2] = (uint32_t) ((ggml_time_us() - t0)*1000);
 +
@@ -3030,7 +3034,7 @@ index 81af890..05fed72 100644
  #include <map>
  #include <numeric>
  #include <regex>
-@@ -2063,10 +2070,365 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
+@@ -2063,10 +2070,369 @@ bool llama_model_base::load_tensors(llama_model_loader & ml) {
      }
  
      load_tensors_hadamard();
@@ -3063,7 +3067,11 @@ index 81af890..05fed72 100644
 +        return;
 +    }
 +    // ggml-cuda registers host memory only with GGML_CUDA_REGISTER_HOST set (read once, at its first use; nothing else here uses it)
++#if defined(_WIN32)
++    _putenv_s("GGML_CUDA_REGISTER_HOST", "1");
++#else
 +    setenv("GGML_CUDA_REGISTER_HOST", "1", 0);
++#endif
 +    // whole pages around the table (inside the same mapping or allocation)
 +    const size_t page = 4096;
 +    const uintptr_t b = (uintptr_t) per_layer_tok_embd->data & ~(uintptr_t) (page - 1);
@@ -3954,7 +3962,7 @@ index 6a343a7..0e9f86a 100644
      };
  
      struct binding {
-@@ -235,6 +536,209 @@ struct llama_moe_cache::impl {
+@@ -235,6 +536,213 @@ struct llama_moe_cache::impl {
      stats stats_small; // up to 8 tokens per ubatch
      stats stats_large;
      stats stats_copy;  // experts copied from the cache for large batches
@@ -4147,7 +4155,11 @@ index 6a343a7..0e9f86a 100644
 +            return;
 +        }
 +        stats_t = now;
++#if defined(_MSC_VER)
++        struct timespec ts; timespec_get(&ts, TIME_UTC);
++#else
 +        struct timespec ts; clock_gettime(CLOCK_REALTIME, &ts);
++#endif
 +        fprintf(stats_f, "{\"t\": %.3f, \"cpu_job_us\": %.0f, \"cpu_pairs\": %zu, \"cpu_experts\": %zu, \"up_bytes\": %zu, \"copy_bytes\": %zu, "
 +            "\"hits\": %zu, \"misses\": %zu, \"flag_wait_us\": %.0f, \"la_issued\": %zu, \"pf_job_us\": %.0f, \"pf_cpu\": %zu, \"share\": %.3f, "
 +            "\"calls\": %zu, \"sync_us\": %.0f, \"plan_us\": %.0f}\n",

@@ -49,8 +49,19 @@ jobs:
           method: 'network'
 
       - name: Build llama-server
-        shell: bash
-        run: bash build.sh tandem -DCMAKE_CUDA_ARCHITECTURES=120
+        shell: pwsh
+        run: |
+          # VS generator can't find the CUDA toolset (CUDA was installed after VS),
+          # so use Ninja with a VS dev shell environment (cl.exe + INCLUDE/LIB on PATH).
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsRoot = & $vswhere -latest -property installationPath
+          Write-Host "VS root: $vsRoot"
+          & "$vsRoot\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64
+          Write-Host "cl: $((Get-Command cl -ErrorAction SilentlyContinue).Source)"
+          Write-Host "nvcc: $((Get-Command nvcc -ErrorAction SilentlyContinue).Source)"
+          Write-Host "ninja: $((Get-Command ninja -ErrorAction SilentlyContinue).Source)"
+          $env:CMAKE_GENERATOR = "Ninja"
+          bash build.sh tandem -DCMAKE_CUDA_ARCHITECTURES=120
 
       # Print the tandem/MTP related flags so the run log shows what this build supports.
       - name: Verify tandem flags

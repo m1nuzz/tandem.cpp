@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build-windows-cuda:
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 240
     steps:
       # Global git config must be set BEFORE checkout so files are checked out
@@ -27,19 +27,19 @@ jobs:
       - uses: actions/checkout@v4
 
       # Jimver/cuda-toolkit's version list does not include the newest CUDA
-      # releases, and the runner's VS 2026 (cl 19.5x) is rejected by CUDA 13.1.
-      # Install CUDA 13.3 directly from NVIDIA's CDN (newest Windows network
+      # releases, and the runner's VS 2022 (cl 19.5x) is rejected by CUDA 13.1.
+      # Install CUDA 13.1 directly from NVIDIA's CDN (newest Windows network
       # installer publicly available there). curl with retries instead of
       # Invoke-WebRequest, which can hang forever on a stalled connection.
-      - name: Install CUDA 13.3
+      - name: Install CUDA 13.1
         shell: pwsh
         run: |
-          $url = "https://developer.download.nvidia.com/compute/cuda/13.3.0/network_installers/cuda_13.3.0_windows_network.exe"
+          $url = "https://developer.download.nvidia.com/compute/cuda/13.1.0/network_installers/cuda_13.1.0_windows_network.exe"
           curl.exe -L --retry 3 --retry-delay 5 --connect-timeout 30 -o cuda_setup.exe $url
           if (-not (Test-Path .\cuda_setup.exe) -or (Get-Item .\cuda_setup.exe).Length -lt 1MB) { throw "CUDA installer download failed" }
           $p = Start-Process -FilePath .\cuda_setup.exe -ArgumentList '-s' -Wait -PassThru
           Write-Host "Installer exit code: $($p.ExitCode)"
-          $cudaRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.3"
+          $cudaRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.1"
           if (-not (Test-Path "$cudaRoot\bin\nvcc.exe")) { throw "nvcc.exe not found after CUDA install" }
           "CUDA_PATH=$cudaRoot" >> $env:GITHUB_ENV
           "$cudaRoot\bin" >> $env:GITHUB_PATH
@@ -107,5 +107,5 @@ jobs:
           else
             gh release create "$VERSION" "$ZIP" --repo "$GITHUB_REPOSITORY" \
               --title "tandem.cpp llama-server (Windows CUDA) $VERSION" \
-              --notes "Windows x64 build of llama-server with tandem.cpp MoE expert-cache patches, CUDA sm_120 (RTX 50xx). Built from $GITHUB_SHA with CUDA 13.3 / VS 2026. See the README for recommended launch flags."
+              --notes "Windows x64 build of llama-server with tandem.cpp MoE expert-cache patches, CUDA sm_120 (RTX 50xx). Built from $GITHUB_SHA with CUDA 13.1 / VS 2022. See the README for recommended launch flags."
           fi

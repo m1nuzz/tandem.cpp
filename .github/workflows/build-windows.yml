@@ -107,5 +107,5 @@ jobs:
           else
             gh release create "$VERSION" "$ZIP" --repo "$GITHUB_REPOSITORY" \
               --title "tandem.cpp llama-server (Windows CUDA) $VERSION" \
-              --notes "Windows x64 build of llama-server with tandem.cpp MoE expert-cache patches, CUDA sm_120 (RTX 50xx). Built from $GITHUB_SHA with CUDA 13.1 / VS 2022. See the README for recommended launch flags."
+              --notes "Windows x64 build of llama-server with tandem.cpp MoE expert-cache patches and upstream Inkling-2-Mini support, CUDA sm_120 (RTX 50xx). Built from $GITHUB_SHA with CUDA 13.1 / VS 2022. See the README for recommended launch flags."
           fi

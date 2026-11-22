@@ -2,7 +2,7 @@
 
 tandem.cpp is a patch set for [llama.cpp](https://github.com/ggml-org/llama.cpp). It makes MoE models that don't fit in VRAM run faster in llama.cpp. It keeps the most-used experts on the GPU and lets the CPU help with the rest, for any MoE model llama.cpp supports. Single-user decode is the target.
 
-It is an independent project, not affiliated with ggml-org. Base: llama.cpp `f5222f25c` (2026-10-28, see `BASE_COMMIT`). Version **v0.4.0** (2026-11-18).
+It is an independent project, not affiliated with ggml-org. Base: llama.cpp `afe77e18f` (2026-11-22, see `BASE_COMMIT`) for Windows fork release **v1.3.0**; the tandem.cpp patch set is still v0.4.0 (2026-11-18). The newer base adds upstream **Inkling-2-Mini** (`inkling2_loop`) support on top of the tandem MoE cache.
 
 Decode tok/s, one user, GSM8K questions. Each row is one model on one PC. Two numbers are greedy / the model's recommended sampling, one number is greedy.
 
@@ -24,6 +24,13 @@ We tuned for Qwen3.8 only, but other MoE models that do not fit in VRAM gain too
 [Project Maya](https://github.com/mw00/project-maya) is the DeepSeek-V4.1 engine with its own quants. On Maya's quants, the same files on both engines (RTX 5090 + 128 GB, no drafting on either side), tandem.cpp decodes faster: **Maya-S 25.3 vs 20.4 tok/s** (1.24×; Maya's default quant, larger than this PC's RAM) and **Maya-XS 60.5 vs 39.3** (1.5×). Maya reads the first long prompt faster when the model does not fit in RAM ([details](#deepseek-v41-maya-s-and-maya-xs-the-same-weights-on-both-engines)).
 
 For a big card serving many concurrent streams, use [Tandem-vLLM](https://github.com/ewhacc/tandem) instead; tandem.cpp is for one user on a 16–32 GB card with the experts in RAM.
+
+## Fork release v1.3.0 (2026-11-22, Windows CUDA)
+
+- Rebased the tandem.cpp v0.4.0 patch set onto llama.cpp `afe77e18f` instead of `f5222f25c`, while keeping the Windows/MSVC build fixes. This is a fork packaging change, not a new upstream tandem.cpp release.
+- The newer llama.cpp base includes Inkling-2-Mini (`inkling2_loop`) support, so this build can run compatible Inkling GGUFs with the tandem MoE expert cache. The previous v1.2.0 Windows build could not load them.
+- Auto-batch behaviour is unchanged: omit `-b`/`-ub` on MoE models and let tandem choose the prompt/ubatch sizes. The local launcher uses `--alias inkling2-abliterated`.
+- Verified on Windows with MSVC 19.44 and CUDA sm_120: Qwen3.6 MoE smoke test passed, and the IsValorum Inkling-2-Mini Abliterated APEX MiniPlus V2.1 GGUF loaded, generated, and emitted tool calls.
 
 ## What's new in v0.4.0 (2026-11-18)
 
